@@ -1,0 +1,212 @@
+<html>
+<head>
+<meta charset="utf-8" />
+<title>MyDic</title>
+<style>
+table {
+	border-collapse: collapse;
+}
+
+table tr th,
+table tr td {
+    padding: 0 10px;
+    border: 1px solid #DDD;
+    vertical-align: middle;
+}
+
+table tr th {
+    text-align: center;
+    font-weight: bold;
+}
+
+.modal {
+	display: none;
+	position: fixed;
+	z-index: 1000;
+	top: 0;
+	left: 0;
+	height: 100%;
+	width: 100%;
+	background: rgba(255,255,255,.8)
+		url('./image/loading.gif')
+		50% 50%
+		no-repeat;
+}
+
+body.loading {
+	overflow: hidden;
+}
+
+body.loading .modal {
+	display: block;
+}
+
+</style>
+</head>
+
+
+<body>
+
+<div id="input_form">
+
+<form>
+<input type="text" size=80 id="word1" /><br />
+<input type="text" size=80 id="word2" /><br />
+<input type="text" size=40 id="relation" /><br />
+
+<!--<input type="submit" id="submit_button" value="Submit" />-->
+<input type="button" id="submit_button" value="Submit" />
+<input type="reset"  id="reset_button"  value="Reset"  />
+<br />
+<input type="button" id="search_button"  value="Search" />
+
+</form>
+</div>
+
+<div class="modal"></div>
+
+<p id="output"></p>
+
+
+<script src="../js/jquery-3.2.1.min.js"></script>
+<script type="text/javascript">
+var ip_text;
+
+//polyfill for IE
+if (!String.prototype.startsWith) {
+  String.prototype.startsWith = function(searchString, position) {
+      position = position || 0;
+	      return this.indexOf(searchString, position) === position;
+		    };
+}
+
+$(function(){
+	$('#submit_button').click(function()
+	{
+		$('#output').text("");
+		do_command("register");
+	});
+	$('#search_button').click(function()
+	{
+		$('#output').text("");
+		do_command("search");
+	});
+	$.getJSON('https://api.ipify.org?format=json', function(data)
+	{
+    		ip_text = data.ip;
+	});
+	$('#word1').keydown(function(event)
+	{
+		if(event.which==13) //Enter
+		{
+			$('#search_button').trigger("click");
+		}
+	});
+	var $body = $("body");
+	$(document).on(
+	{
+		ajaxStart: function() { $body.addClass("loading"); },
+		ajaxStop : function() { $body.removeClass("loading"); }
+	});
+});
+
+function do_command(cmd)
+{
+	var utc_time = Math.floor((new Date()).getTime() / 1000);
+	var word1 = $('#word1').val().trim();
+	var word2 = $('#word2').val().trim();
+	var relation = $('#relation').val().trim();
+	
+	switch(cmd)
+	{
+	case 'register':
+		if((word1=="") || (word2==""))return;
+		break;
+	case 'search':
+		if((word1=="") && (word2=="") && (relation==""))return;
+		break;
+	default:
+		return; //for safety
+		break;
+	}
+	
+	var json_text = JSON.stringify({'cmd':cmd, 'word1':word1, 'word2':word2, 'relation':relation, 'ip':ip_text, 'timestamp':utc_time});
+	//console.log(json_text);
+	send(json_text);
+}
+
+function send(json_text)
+{
+	$.ajax({
+		type: 'POST',
+		url: '../cgi-bin/mydic.cgi',
+		contentType: 'application/json',
+		data: json_text,
+		timeout: 10000,
+		success: function(data)
+		{
+			output = data['output'];
+			
+			if(output == "")output = "Success";
+			$('#output').text(output + "; db size = " + data['db_size']);
+			
+			if(data['match'])
+			{
+				var matches = data['match'];
+				var table = $('<table>').addClass('foo');
+				var h = $('<tr>');
+				h.append('<th>word1</th>');
+				h.append('<th>word2</th>');
+				h.append('<th>relation</th>');
+				table.append(h);
+				for(i=0; i<matches.length; i++)
+				{
+    				var row = $('<tr>').addClass('bar');
+					var word1 = matches[i]['word1'];
+					var word2 = matches[i]['word2'];
+					var relation = matches[i]['relation'];
+
+					var c1 = set_value('<td>', word1);
+					var c2 = set_value('<td>', word2);
+					var c3 = set_value('<td>', relation.toLowerCase()=="english" ? online_dictionary(word1) : relation, relation);
+					row.append(c1);
+					row.append(c2);
+					row.append(c3);
+					table.append(row);
+				}
+				$('#output').append(table);
+			}
+			else // cmd == 'register'
+			{
+				$('#word1').val("");
+				$('#word2').val("");
+				$('#relation').val("");
+			}
+		},
+		error: function(XMLHttpRequest, textStatus, errorThrown)
+		{
+			alert("Post Error");
+		}
+	});
+	return false;
+}
+
+function set_value(tag, value, optional_text)
+{
+	var is_url = value.startsWith('http://') || value.startsWith('https://');
+	var text1 = typeof optional_text==='undefined' ? value : optional_text;
+	if(is_url)return $(tag).append($('<a>', {href:value, target:"_blank"}).text(text1));
+	return $(tag).text(text1);
+}
+
+function online_dictionary(word)
+{
+	return "http://dictionary.cambridge.org/dictionary/english/"+word.toLowerCase();
+}
+</script>
+
+
+
+</body>
+</html>
+
